@@ -1,8 +1,10 @@
-# 🐋 Mandarin Tutor
+# 🔊 ToneForge — Mandarin Learning Tutor
 
-> AI-powered Mandarin pronunciation tutor with **real tone scoring** — built $0-cost, local-first, fully self-hosted.
+> Voice-first Mandarin pronunciation tutor with a **custom tone-scoring engine built from scratch** — pitch-contour analysis, zero paid speech APIs, fully self-hosted.
 
 A voice-first language-learning app inspired by Pingo AI, built to fix the gaps in existing tools: loose pronunciation scoring, shallow content, and no real progress tracking. The headline feature is a **custom Mandarin tone-scoring engine** built from scratch with pitch-contour analysis — no paid speech APIs.
+
+Built as a personal tool (for me + my partner learning Mandarin), now open-sourced as a portfolio piece.
 
 ---
 
@@ -112,6 +114,8 @@ The APK is a thin Capacitor shell pointing at the live HTTPS URL, so the app upd
 
 ## Status
 
-Built as a personal-use tool (for me + my partner) and an open-source portfolio piece. Tone engine, curriculum, drill UI, progress tracking, and near-live VAD are all live and verified end-to-end against the public URL.
+Built as a personal-use tool (for me + my partner) and an open-source portfolio piece. Tone engine, curriculum, drill UI, progress tracking, and near-live VAD are all live and verified end-to-end.
+
+Built $0-cost: no Azure Pronunciation Assessment, no Gemini Live API, no metered cloud STT. Everything runs locally or on flat-rate infrastructure.
 
 *Not affiliated with Pingo AI — independently built, inspired by the category.*

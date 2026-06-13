@@ -30,3 +30,6 @@ WORKER_BRIEF.md
 *.swp
 .idea/
 .vscode/
+
+# Internal portfolio drafts (Claude-web output, kept local)
+portfolio-source/

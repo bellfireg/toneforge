@@ -1,15 +1,15 @@
 // Minimal service worker — enables PWA install + offline shell.
 // We deliberately do NOT cache API calls (/chat /stt /tts are always live).
-const CACHE = "mandarin-tutor-v10";
+const CACHE = "toneforge-v11";
 const SHELL = [
   "./index.html",
-  "./style.css?v=10",
-  "./app.js?v=10",
-  "./vad.js?v=10",
-  "./drill.js?v=10",
-  "./learn.js?v=10",
-  "./progress.js?v=10",
-  "./config.js?v=10",
+  "./style.css?v=11",
+  "./app.js?v=11",
+  "./vad.js?v=11",
+  "./drill.js?v=11",
+  "./learn.js?v=11",
+  "./progress.js?v=11",
+  "./config.js?v=11",
   "./manifest.json",
 ];
 

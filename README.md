@@ -30,24 +30,26 @@ It's also a deliberate **$0-cost** build: no Azure Pronunciation Assessment, no 
 ## Architecture
 
 ```
-┌─────────────────┐     HTTPS      ┌──────────────────────────────┐
-│  Android APK /  │ ─────────────► │  Cloudflare Tunnel            │
-│  PWA (browser)  │                │  mandarin.bellfire.site       │
-└─────────────────┘                └──────────────┬───────────────┘
-                                                   │
-                                   ┌───────────────▼───────────────┐
-                                   │  FastAPI backend (port 8900)   │
-                                   │  ──────────────────────────    │
-                                   │  /chat   → LLM (Claude via      │
-                                   │            local 9router)       │
-                                   │  /stt    → faster-whisper       │
-                                   │  /tts    → edge-tts (zh-CN)      │
-                                   │  /assess → tone-scoring engine   │
-                                   │  /curriculum, /progress → SQLite │
-                                   └────────────────────────────────┘
+┌─────────────────┐    HTTPS     ┌──────────────────────────────┐
+│  Android app /  │ ───────────► │  HTTPS entrypoint             │
+│  PWA (browser)  │              │  (Cloudflare Tunnel for public │
+└─────────────────┘              │   PWA, or Tailscale for private│
+                                 │   personal/native use)         │
+                                 └──────────────┬───────────────┘
+                                                │
+                                ┌───────────────▼───────────────┐
+                                │  FastAPI backend (port 8900)   │
+                                │  ──────────────────────────    │
+                                │  /chat   → LLM (OpenAI-compat   │
+                                │            chat endpoint)       │
+                                │  /stt    → faster-whisper       │
+                                │  /tts    → edge-tts (zh-CN)      │
+                                │  /assess → tone-scoring engine   │
+                                │  /curriculum, /progress → SQLite │
+                                └────────────────────────────────┘
 ```
 
-**Stack:** FastAPI · faster-whisper (STT) · edge-tts (TTS) · parselmouth/Praat (pitch extraction) · SQLite · vanilla JS PWA · Capacitor (APK) · Cloudflare Tunnel.
+**Stack:** FastAPI · faster-whisper (STT) · edge-tts (TTS) · parselmouth/Praat (pitch extraction) · SQLite · vanilla JS PWA · Capacitor (APK) · HTTPS entrypoint (Cloudflare Tunnel or Tailscale).
 
 ---
 

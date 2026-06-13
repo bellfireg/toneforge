@@ -3,7 +3,7 @@
   "appName": "Mandarin Tutor",
   "webDir": "www",
   "server": {
-    "url": "https://mandarin.bellfire.site",
+    "url": "https://your-backend.example.com",
     "cleartext": false,
     "androidScheme": "https"
   },

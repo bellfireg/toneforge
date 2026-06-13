@@ -1,0 +1,32 @@
+# --- Python ---
+backend/venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Runtime data ---
+backend/tutor.db
+*.sqlite
+*.sqlite3
+
+# --- Node / Capacitor ---
+android-app/node_modules/
+android-app/android/
+android-app/www/
+
+# --- Build artifacts ---
+MandarinTutor.apk
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# --- Local/dev scratch ---
+workspace/
+WORKER_BRIEF.md
+
+# --- OS / editor ---
+.DS_Store
+*.swp
+.idea/
+.vscode/

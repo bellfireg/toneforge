@@ -1,0 +1,9 @@
+fastapi==0.136.3
+uvicorn==0.49.0
+faster-whisper==1.2.1
+praat-parselmouth==0.4.7
+edge-tts
+httpx==0.28.1
+pydantic==2.13.4
+numpy==2.4.6
+python-multipart

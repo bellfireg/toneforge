@@ -1,0 +1,13 @@
+{
+  "appId": "site.bellfire.mandarin",
+  "appName": "Mandarin Tutor",
+  "webDir": "www",
+  "server": {
+    "url": "https://mandarin.bellfire.site",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

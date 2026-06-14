@@ -13,6 +13,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from faster_whisper import WhisperModel
 
+# Load backend/.env (next to this file) so config works for both `uvicorn app:app`
+# and the systemd unit. Optional: app runs fine with no .env (chat tab aside).
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except ImportError:
+    pass
+
 import tone as tone_engine
 import curriculum as curr
 import srs as srs_mod
@@ -25,8 +33,15 @@ APP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # ---------------------------------------------------------------------------
 whisper_model: WhisperModel | None = None
 
-ROUTER_URL = "http://127.0.0.1:20128/v1/chat/completions"
-ROUTER_MODEL = "kr/claude-sonnet-4.6"
+# Chat LLM endpoint — OpenAI-compatible. Configurable via env so anyone can
+# point it at their own provider. Default = local Ollama ($0, no API key).
+#   CHAT_BASE_URL : base URL of an OpenAI-compatible API (no trailing /v1)
+#   CHAT_MODEL    : model name to request
+#   CHAT_API_KEY  : optional bearer token (leave empty for local Ollama)
+CHAT_BASE_URL = os.environ.get("CHAT_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+ROUTER_URL = CHAT_BASE_URL + "/v1/chat/completions"
+ROUTER_MODEL = os.environ.get("CHAT_MODEL", "qwen2.5:7b")
+CHAT_API_KEY = os.environ.get("CHAT_API_KEY", "").strip()
 EDGE_TTS_BIN = os.path.expanduser("~/.local/bin/edge-tts")
 
 SYSTEM_PROMPT = (
@@ -134,13 +149,21 @@ async def chat(req: ChatRequest):
     messages.append({"role": "user", "content": req.user_text})
 
     payload = {"model": ROUTER_MODEL, "messages": messages, "stream": False}
+    headers = {"Authorization": f"Bearer {CHAT_API_KEY}"} if CHAT_API_KEY else {}
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
-            resp = await client.post(ROUTER_URL, json=payload)
+            resp = await client.post(ROUTER_URL, json=payload, headers=headers)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise HTTPException(502, f"9router error: {exc}") from exc
+            raise HTTPException(
+                503,
+                "Chat LLM is not reachable. The tutor chat needs an OpenAI-compatible "
+                "endpoint. Set CHAT_BASE_URL / CHAT_MODEL / CHAT_API_KEY in backend/.env "
+                "(default expects a local Ollama at http://127.0.0.1:11434). "
+                "All other features (tone drill, writing, curriculum, progress) work without it. "
+                f"[{type(exc).__name__}]",
+            ) from exc
 
     raw_content = resp.json()["choices"][0]["message"]["content"]
 

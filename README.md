@@ -6,6 +6,9 @@ A voice-first language-learning app inspired by Pingo AI, built to fix the gaps 
 
 Built as a personal tool (for me + my partner learning Mandarin), now open-sourced as a portfolio piece.
 
+> 🌐 **Live demo:** [mandarin.bellfire.site](https://mandarin.bellfire.site) — try it in the browser, no install.
+> 🚀 **Run it yourself:** one command — [`./setup.sh`](#run-it-locally). Most features need **no API key**.
+
 ---
 
 ## Why this exists
@@ -81,15 +84,43 @@ Tones 2 (rising) and 4 (falling) separate cleanly by pitch direction. Tones 1↔
 
 ## Run it locally
 
+**One command** (creates a venv, installs deps, seeds `backend/.env`):
+
 ```bash
-# backend
-cd backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt        # fastapi, uvicorn, faster-whisper, parselmouth, edge-tts, ...
+./setup.sh
+cd backend && source venv/bin/activate
 uvicorn app:app --host 0.0.0.0 --port 8900
 ```
 
-Open `http://localhost:8900` (mic needs HTTPS or localhost — it's a browser secure-context requirement).
+Open `http://localhost:8900`. Mic needs HTTPS or `localhost` (browser secure-context rule).
+
+### What needs a key, and what doesn't
+
+**Most of the app runs with zero config and no API key** — tone drill, handwriting,
+STT, TTS, curriculum, SRS, and progress are all local/offline:
+
+| Feature | Needs a key? |
+|---|---|
+| 🎯 Tone drill · ✍️ Writing · 🎙️ STT · 🔊 TTS · 📚 Curriculum · 🏆 Progress | ❌ No |
+| 💬 AI chat tutor | ⚠️ Needs an LLM endpoint |
+
+Only the **💬 Chat** tab talks to a language model. The easiest **$0** path is a local
+[Ollama](https://ollama.com):
+
+```bash
+ollama pull qwen2.5:7b      # backend/.env already points here by default
+```
+
+Prefer a hosted model? Edit `backend/.env` to use any OpenAI-compatible API:
+
+```ini
+CHAT_BASE_URL=https://api.openai.com
+CHAT_MODEL=gpt-4o-mini
+CHAT_API_KEY=sk-...
+```
+
+If chat isn't configured, that one tab shows a friendly "configure your LLM" notice —
+the rest of the app keeps working.
 
 ```bash
 # android APK (needs JDK 17 + Android SDK)

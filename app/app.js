@@ -268,7 +268,11 @@ async function handleUserText(text) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ history, user_text: text }),
     });
-    if (!res.ok) throw new Error("chat " + res.status);
+    if (!res.ok) {
+      let detail = "chat " + res.status;
+      try { const e = await res.json(); if (e && e.detail) detail = e.detail; } catch (_) {}
+      throw new Error(detail);
+    }
     const data = await res.json();
     history = data.history || history;
     removeTyping();

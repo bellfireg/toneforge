@@ -11,8 +11,7 @@
   const subNav = document.createElement("div");
   subNav.className = "write-subnav";
   subNav.innerHTML =
-    `<button class="write-subtab active" data-sub="guided" type="button">✏️ Guided</button>` +
-    `<button class="write-subtab" data-sub="scratchpad" type="button">🖊️ Scratchpad</button>` +
+    `<button class="write-subtab active" data-sub="guided" type="button">🖊️ Write</button>` +
     `<button class="write-subtab" data-sub="recall-sent" type="button">📝 Sentence Recall</button>`;
   writePanel.insertBefore(subNav, writePanel.firstChild);
 

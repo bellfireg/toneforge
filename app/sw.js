@@ -1,6 +1,6 @@
 // Minimal service worker — enables PWA install + offline shell.
 // We deliberately do NOT cache API calls (/chat /stt /tts are always live).
-const CACHE = "toneforge-v15";
+const CACHE = "toneforge-v16";
 const SHELL = [
   "./index.html",
   "./style.css?v=15",

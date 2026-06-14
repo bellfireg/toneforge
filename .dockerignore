@@ -1,0 +1,38 @@
+# Keep the Docker build context small and fast
+backend/venv/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Runtime data (DB lives in a mounted volume, not the image)
+backend/tutor.db
+*.sqlite
+*.sqlite3
+
+# Node / Capacitor / Android build artifacts
+android-app/node_modules/
+android-app/android/
+android-app/www/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Secrets — never bake into the image
+.env
+backend/.env
+*.local
+
+# Git / editor / OS
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Docs / local scratch
+portfolio-source/
+workspace/
+WORKER_BRIEF.md
+*.md

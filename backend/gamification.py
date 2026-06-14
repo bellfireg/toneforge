@@ -17,7 +17,9 @@ from datetime import datetime, timezone
 
 import curriculum as curr
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tutor.db")
+DB_PATH = os.environ.get("DB_PATH") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "tutor.db"
+)
 
 # XP awards
 XP_TONE_PASS = 10

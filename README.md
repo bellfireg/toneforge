@@ -84,6 +84,33 @@ Tones 2 (rising) and 4 (falling) separate cleanly by pitch direction. Tones 1↔
 
 ## Run it locally
 
+### Option A — Docker (easiest, recommended)
+
+You only need [Docker](https://docs.docker.com/get-docker/) installed. One command:
+
+```bash
+docker compose up -d
+```
+
+That builds the image and starts the backend on **http://localhost:8900**. First boot
+takes a few minutes (it downloads the Whisper speech model once, then caches it).
+
+```bash
+docker compose logs -f      # watch startup ("Application startup complete")
+docker compose down         # stop it
+```
+
+Notes:
+- Port 8900 already in use? Pick another: `TONEFORGE_PORT=8901 docker compose up -d`.
+- Your progress (SQLite DB) and the Whisper model persist in a named volume, so
+  restarts are instant and keep your data.
+- **Chat tab:** by default the container looks for a local [Ollama](https://ollama.com)
+  on your host (`ollama pull qwen2.5:7b`). To use a hosted model instead, edit the
+  `environment:` block in `docker-compose.yml` (CHAT_BASE_URL / CHAT_MODEL / CHAT_API_KEY).
+  Every other feature works with no setup.
+
+### Option B — Local Python
+
 **One command** (creates a venv, installs deps, seeds `backend/.env`):
 
 ```bash

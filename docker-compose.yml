@@ -1,0 +1,33 @@
+services:
+  toneforge:
+    build: .
+    image: toneforge:latest
+    container_name: toneforge
+    ports:
+      # Host port is overridable: TONEFORGE_PORT=8901 docker compose up -d
+      - "${TONEFORGE_PORT:-8900}:8900"
+    volumes:
+      # Persist the SQLite DB and the downloaded Whisper model across restarts
+      - toneforge-data:/data
+    environment:
+      # ── Chat LLM (the ONLY feature that needs a model) ──────────────────
+      # Everything else (tone drill, writing, STT, TTS, curriculum, progress)
+      # works with no config at all.
+      #
+      # Easiest $0 path = a local Ollama on the host. From inside the
+      # container the host is reachable at host.docker.internal:
+      CHAT_BASE_URL: "http://host.docker.internal:11434"
+      CHAT_MODEL: "qwen2.5:7b"
+      CHAT_API_KEY: ""
+      #
+      # Prefer a hosted model instead? Comment the 3 lines above and use:
+      #   CHAT_BASE_URL: "https://api.openai.com"
+      #   CHAT_MODEL: "gpt-4o-mini"
+      #   CHAT_API_KEY: "sk-..."
+    extra_hosts:
+      # Makes host.docker.internal resolve on Linux (built-in on Mac/Windows)
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  toneforge-data:

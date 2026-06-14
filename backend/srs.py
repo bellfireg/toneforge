@@ -16,7 +16,9 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tutor.db")
+DB_PATH = os.environ.get("DB_PATH") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "tutor.db"
+)
 
 DEFAULT_EASE = 2.5
 MIN_EASE = 1.3

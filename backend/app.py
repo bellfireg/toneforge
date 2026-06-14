@@ -42,7 +42,12 @@ CHAT_BASE_URL = os.environ.get("CHAT_BASE_URL", "http://127.0.0.1:11434").rstrip
 ROUTER_URL = CHAT_BASE_URL + "/v1/chat/completions"
 ROUTER_MODEL = os.environ.get("CHAT_MODEL", "qwen2.5:7b")
 CHAT_API_KEY = os.environ.get("CHAT_API_KEY", "").strip()
-EDGE_TTS_BIN = os.path.expanduser("~/.local/bin/edge-tts")
+# edge-tts binary: env-overridable so it works in Docker (PATH) and host (~/.local/bin)
+EDGE_TTS_BIN = os.environ.get("EDGE_TTS_BIN") or (
+    os.path.expanduser("~/.local/bin/edge-tts")
+    if os.path.exists(os.path.expanduser("~/.local/bin/edge-tts"))
+    else "edge-tts"
+)
 
 SYSTEM_PROMPT = (
     "You are a friendly Mandarin Chinese tutor for absolute beginners. "

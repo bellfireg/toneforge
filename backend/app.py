@@ -15,6 +15,8 @@ from faster_whisper import WhisperModel
 
 import tone as tone_engine
 import curriculum as curr
+import srs as srs_mod
+import gamification as gami
 
 APP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app")
 
@@ -44,6 +46,8 @@ async def lifespan(app: FastAPI):
     global whisper_model
     whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
     curr.init_db()
+    srs_mod.init_db()
+    gami.init_db()
     yield
 
 
@@ -251,8 +255,53 @@ async def lesson_complete(req: LessonCompleteRequest):
 
 @app.get("/curriculum")
 async def curriculum():
-    """Units + lessons outline for the lesson-list screen."""
-    return {"units": curr.curriculum_outline()}
+    """Units + lessons outline annotated with progress + unlock state."""
+    return {"units": curr.curriculum_status()}
+
+
+@app.get("/lesson-scores/{lesson_id}")
+async def lesson_scores(lesson_id: str):
+    """Best score per syllable + completion stats for a single lesson."""
+    return curr.lesson_item_scores(lesson_id)
+
+
+class WriteAttemptRequest(BaseModel):
+    hanzi: str
+    mode: str = "trace"          # 'trace' | 'recall'
+    score: int = 0              # 0..100 stroke accuracy from Hanzi Writer quiz
+    mistakes: int = 0
+    lesson_id: str = ""
+
+
+class SrsReviewRequest(BaseModel):
+    item_key: str
+    rating: int              # 1=Again 2=Hard 3=Good 4=Easy
+
+
+class ChallengeCompleteRequest(BaseModel):
+    item_key: str
+
+
+class RecallAssessRequest(BaseModel):
+    lesson_id: str
+    prompt_id: str           # numeric index "0","1".. or prompt_en text
+    mode: str = "writing"   # 'writing' | 'voice'
+    payload: str = ""       # hanzi text attempt (client does STT for voice)
+
+
+@app.post("/write-assess")
+async def write_assess(req: WriteAttemptRequest):
+    """Record a handwriting (stroke) attempt scored client-side by Hanzi Writer."""
+    score = max(0, min(100, int(req.score)))
+    return curr.record_writing_attempt(
+        hanzi=req.hanzi, mode=req.mode, score=score,
+        mistakes=max(0, int(req.mistakes)), lesson_id=req.lesson_id or None)
+
+
+@app.get("/writing-scores/{lesson_id}")
+async def writing_scores(lesson_id: str):
+    """Best WRITING score per syllable + completion stats for one lesson."""
+    return curr.lesson_writing_scores(lesson_id)
 
 
 @app.get("/lesson/{lesson_id}")
@@ -262,6 +311,173 @@ async def lesson(lesson_id: str):
     if data is None:
         raise HTTPException(404, f"lesson '{lesson_id}' not found")
     return data
+
+
+# ---------------------------------------------------------------------------
+# SRS endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/srs/due")
+async def srs_due(limit: int = 20, user_id: str = "default"):
+    """Return SRS cards due for review today."""
+    items = srs_mod.due_items(user_id, limit)
+    return {"due": items, "count": len(items)}
+
+
+@app.post("/srs/review")
+async def srs_review(req: SrsReviewRequest, user_id: str = "default"):
+    """Submit a review rating (1-4) for an SRS card; update schedule."""
+    result = srs_mod.review(req.item_key, req.rating, user_id)
+    xp_result = gami.award_xp("srs_review", gami.XP_TONE_PASS, user_id)
+    return {**result, "xp": xp_result}
+
+
+# ---------------------------------------------------------------------------
+# Daily challenge endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/challenge/today")
+async def challenge_today(user_id: str = "default"):
+    """Return today's challenge (generates on first call each day)."""
+    return gami.get_or_create_challenge(user_id)
+
+
+@app.post("/challenge/complete")
+async def challenge_complete(req: ChallengeCompleteRequest,
+                              user_id: str = "default"):
+    """Mark one challenge item done, award XP."""
+    return gami.complete_challenge_item(req.item_key, user_id)
+
+
+# ---------------------------------------------------------------------------
+# Gamification state
+# ---------------------------------------------------------------------------
+
+@app.get("/gamification/state")
+async def gamification_state(user_id: str = "default"):
+    """XP, level, hearts, streak, badges."""
+    return gami.get_state(user_id)
+
+
+# ---------------------------------------------------------------------------
+# Recall-assess: sentence-recall grading (writing or voice)
+# ---------------------------------------------------------------------------
+
+@app.post("/recall-assess")
+async def recall_assess(req: RecallAssessRequest, user_id: str = "default"):
+    """Grade a sentence-recall attempt against the expected hanzi answer."""
+    if curr.get_lesson(req.lesson_id) is None:
+        raise HTTPException(404, f"lesson '{req.lesson_id}' not found")
+
+    recall_prompts: list = []
+    for unit in curr.CURRICULUM:
+        for l in unit["lessons"]:
+            if l["id"] == req.lesson_id:
+                recall_prompts = l.get("recall_prompts", [])
+                break
+
+    if not recall_prompts:
+        raise HTTPException(404, f"no recall prompts for lesson '{req.lesson_id}'")
+
+    # resolve by numeric index or by exact prompt_en text
+    prompt = None
+    if req.prompt_id.isdigit():
+        idx = int(req.prompt_id)
+        if 0 <= idx < len(recall_prompts):
+            prompt = recall_prompts[idx]
+    else:
+        for p in recall_prompts:
+            if p.get("prompt_en") == req.prompt_id:
+                prompt = p
+                break
+
+    if prompt is None:
+        raise HTTPException(404, f"prompt_id '{req.prompt_id}' not found")
+
+    answer = prompt["answer_hanzi"].strip()
+    attempt = req.payload.strip()
+
+    if attempt == answer:
+        score = 100
+    else:
+        # character-overlap ratio — partial credit for near-misses
+        matched = sum(1 for ch in attempt if ch in answer)
+        score = round(matched / max(len(answer), 1) * 100)
+
+    passed = score >= 70
+    xp_result = gami.award_xp("recall_pass", gami.XP_RECALL_PASS, user_id) if passed else None
+
+    return {
+        "prompt_en": prompt["prompt_en"],
+        "attempt": attempt,
+        "answer_hanzi": answer,
+        "answer_pinyin": prompt["answer_pinyin"],
+        "score": score,
+        "passed": passed,
+        "xp": xp_result,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Stats — rich progress summary
+# ---------------------------------------------------------------------------
+
+@app.get("/stats")
+async def stats_endpoint(user_id: str = "default"):
+    """Rich progress: per-level %, per-unit, tone vs writing, weak items,
+    daily activity series (last 7 days)."""
+    import sqlite3 as _sq
+    from curriculum import DB_PATH as _DB
+
+    with _sq.connect(_DB) as _c:
+        _c.row_factory = _sq.Row
+        tone_row = _c.execute(
+            "SELECT COUNT(*) c, AVG(score) a FROM attempts WHERE user_id=?",
+            (user_id,)).fetchone()
+        write_row = _c.execute(
+            "SELECT COUNT(*) c, AVG(score) a FROM writing_attempts WHERE user_id=?",
+            (user_id,)).fetchone()
+        done_set = {r["lesson_id"] for r in _c.execute(
+            "SELECT lesson_id FROM lesson_progress "
+            "WHERE user_id=? AND completed=1", (user_id,)).fetchall()}
+        weak_rows = _c.execute(
+            "SELECT hanzi, MAX(score) best FROM attempts WHERE user_id=? "
+            "GROUP BY hanzi HAVING MAX(score)<70 ORDER BY MAX(score) ASC LIMIT 10",
+            (user_id,)).fetchall()
+        act_rows = _c.execute(
+            "SELECT substr(created_at,1,10) day, COUNT(*) cnt FROM attempts "
+            "WHERE user_id=? GROUP BY day ORDER BY day DESC LIMIT 7",
+            (user_id,)).fetchall()
+
+    outline = curr.curriculum_outline()
+    per_level: dict = {}
+    per_unit = []
+    for unit in outline:
+        lvl = unit["level"]
+        total = len(unit["lessons"])
+        done = sum(1 for l in unit["lessons"] if l["id"] in done_set)
+        per_unit.append({"unit_id": unit["id"], "title": unit["title"],
+                         "level": lvl, "total_lessons": total,
+                         "done_lessons": done,
+                         "pct": round(done / max(total, 1) * 100)})
+        bl = per_level.setdefault(lvl, {"total": 0, "done": 0})
+        bl["total"] += total
+        bl["done"] += done
+    for v in per_level.values():
+        v["pct"] = round(v["done"] / max(v["total"], 1) * 100)
+
+    return {
+        "tone":    {"attempts": tone_row["c"] or 0,
+                    "avg_score": round(tone_row["a"]) if tone_row["a"] else 0},
+        "writing": {"attempts": write_row["c"] or 0,
+                    "avg_score": round(write_row["a"]) if write_row["a"] else 0},
+        "per_level": per_level,
+        "per_unit": per_unit,
+        "weak_items": [{"hanzi": r["hanzi"], "best_score": r["best"]}
+                       for r in weak_rows],
+        "daily_activity": [{"date": r["day"], "attempts": r["cnt"]}
+                           for r in act_rows],
+    }
 
 
 # Path to the built APK (project root, one level up from backend/).

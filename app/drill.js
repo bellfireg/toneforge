@@ -229,6 +229,12 @@
     resultEl.innerHTML = html;
   }
 
+  // ---- back to learn ----
+  const backBtn = document.getElementById("drillBackBtn");
+  if (backBtn) backBtn.addEventListener("click", () => {
+    if (window.MTTabs) window.MTTabs.show("learn");
+  });
+
   // ---- next word ----
   nextBtn.addEventListener("click", () => {
     idx = (idx + 1) % WORDS.length;

@@ -13,6 +13,12 @@
   const composer = document.querySelector(".composer");
   const listEl = document.getElementById("learnList");
 
+  const LEVEL_LABELS = {
+    basic: "🟢 Basic",
+    intermediate: "🟡 Intermediate",
+    hard: "🔴 Hard",
+  };
+
   let loaded = false;
 
   // ---- tab switching delegates to the single controller in drill.js ----
@@ -37,34 +43,60 @@
 
   function renderUnits(units) {
     listEl.innerHTML = "";
-    const done = getDone();
+    let lastLevel = null;
     for (const u of units) {
-      const title = document.createElement("div");
-      title.className = "learn-unit-title";
-      title.textContent = u.title;
-      listEl.appendChild(title);
+        const level = u.level || "basic";
+        if (level !== lastLevel) {
+          const lh = document.createElement("div");
+          lh.className = "learn-level-title level-" + level;
+          lh.textContent = LEVEL_LABELS[level] || level;
+          listEl.appendChild(lh);
+          lastLevel = level;
+        }
 
-      const desc = document.createElement("div");
-      desc.className = "learn-unit-desc";
-      desc.textContent = u.desc;
-      listEl.appendChild(desc);
+        const title = document.createElement("div");
+        title.className = "learn-unit-title" + (u.locked ? " locked" : "");
+        title.textContent = (u.locked ? "🔒 " : "") + u.title;
+        listEl.appendChild(title);
 
-      for (const l of u.lessons) {
-        listEl.appendChild(lessonCard(l, done.includes(l.id)));
-      }
+        const desc = document.createElement("div");
+        desc.className = "learn-unit-desc";
+        desc.textContent = u.locked
+          ? u.desc + "  —  unlock by passing the previous level's capstone."
+          : u.desc;
+        listEl.appendChild(desc);
+
+        for (const l of u.lessons) {
+          listEl.appendChild(lessonCard(l, u.locked));
+        }
     }
   }
 
-  function lessonCard(l, isDone) {
+  function lessonCard(l, unitLocked) {
     const card = document.createElement("div");
-    card.className = "lesson-card" + (isDone ? " done" : "");
+    const done = l.all_passed === true;
+    const started = (l.items_passed || 0) > 0 || (l.best_avg || 0) > 0;
+    card.className = "lesson-card" +
+      (done ? " done" : "") + (unitLocked ? " locked" : "");
+
+    const passed = l.items_passed || 0;
+    const totalItems = l.items_total || l.count || 0;
+    let progressLine;
+    if (done) {
+      progressLine = `<span class="lesson-check">✓ ${l.best_avg} avg</span>`;
+    } else if (started) {
+      progressLine = `<span class="lesson-progress">${passed}/${totalItems} passed · ${l.best_avg} avg</span>`;
+    } else {
+      progressLine = "";
+    }
+
     card.innerHTML =
-      `<div class="lesson-title">${l.title}` +
-      (isDone ? `<span class="lesson-check">✓ done</span>` : "") +
-      `</div>` +
+      `<div class="lesson-title">${l.capstone ? "⭐ " : ""}${l.title}${progressLine}</div>` +
       `<div class="lesson-goal">${l.goal}</div>` +
-      `<div class="lesson-meta">${l.count} words · tap to practice</div>`;
-    card.addEventListener("click", () => openLesson(l.id));
+      `<div class="lesson-meta">${totalItems} words · ${
+        unitLocked ? "locked" : (started && !done ? "tap to re-learn" : "tap to practice")
+      }</div>`;
+    if (!unitLocked) card.addEventListener("click", () => openLesson(l.id));
     return card;
   }
 
@@ -78,6 +110,11 @@
       if (window.MTDrill && typeof window.MTDrill.loadItems === "function") {
         window.MTDrill.loadItems(lesson.items, lesson.title);
         window.__MT_CURRENT_LESSON = lessonId; // used by progress phase
+      }
+      // Also feed the same items into the Writing module (silently, no tab
+      // switch) so the learner can practice writing the same lesson's chars.
+      if (window.MTWrite && typeof window.MTWrite.loadItems === "function") {
+        window.MTWrite.loadItems(lesson.items, lessonId);
       }
     } catch (e) {
       listEl.innerHTML =

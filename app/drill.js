@@ -172,8 +172,11 @@
     try {
       const fd = new FormData();
       fd.append("file", blob, "drill.webm");
+      const lessonId = window.__MT_CURRENT_LESSON || "";
       const url = API + "/assess?target_tone=" + w.tone +
-                  "&target_pinyin=" + encodeURIComponent(w.py);
+                  "&target_pinyin=" + encodeURIComponent(w.py) +
+                  "&hanzi=" + encodeURIComponent(w.hz) +
+                  "&lesson_id=" + encodeURIComponent(lessonId);
       const res = await fetch(url, { method: "POST", body: fd });
       if (!res.ok) throw new Error("assess " + res.status);
       const d = await res.json();
@@ -199,10 +202,15 @@
       return;
     }
     const heard = d.transcript ? `<div class="score-detail">Heard: <b>${d.transcript}</b></div>` : "";
-    const toneOK = d.detected_tone === d.target_tone;
-    const toneLine = toneOK
+    // Correctness is driven by the server's `pass` flag (score-based), NOT the
+    // weak standalone detector — so a high score never gets called "wrong".
+    const passed = d.pass === true;
+    const toneLine = passed
       ? `<div class="score-detail tone-right">✓ Your tone is correct (tone ${d.target_tone})</div>`
-      : `<div class="score-detail tone-wrong">Your tone sounds like <b>tone ${d.detected_tone ?? "?"}</b>, should be <b>tone ${d.target_tone}</b>. Listen to the example and mimic the shape.</div>`;
+      : `<div class="score-detail tone-wrong">Not quite — should be <b>tone ${d.target_tone}</b>${
+          d.detected_tone && d.detected_tone !== d.target_tone
+            ? ` but sounded like <b>tone ${d.detected_tone}</b>` : ""
+        }. Listen to the example and mimic the shape.</div>`;
     resultEl.hidden = false;
     resultEl.innerHTML =
       `<div class="score-ring" style="background:${ringColor(d.score)}">${d.score}</div>` +
@@ -211,6 +219,9 @@
       `<div class="drill-actions"><button class="drill-btn listen" id="resListen">🔊 Listen to example</button></div>`;
     const rl = document.getElementById("resListen");
     if (rl) rl.addEventListener("click", () => listenBtn.click());
+    // Refresh Learn + Progress so per-item scores / unlocks update live.
+    if (window.MTLearn && typeof window.MTLearn.refresh === "function") window.MTLearn.refresh();
+    if (window.MTProgress && typeof window.MTProgress.refresh === "function") window.MTProgress.refresh();
   }
 
   function flashResult(html) {

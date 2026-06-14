@@ -620,6 +620,7 @@ def get_lesson(lesson_id: str) -> dict | None:
                         {"hanzi": hz, "pinyin": py, "gloss": gl, "tone": tn}
                         for (hz, py, gl, tn) in l["items"]
                     ],
+                    "recall_prompts": l.get("recall_prompts", []),
                 }
     return None
 

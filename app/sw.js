@@ -1,20 +1,23 @@
 // Minimal service worker — enables PWA install + offline shell.
 // We deliberately do NOT cache API calls (/chat /stt /tts are always live).
-const CACHE = "toneforge-v14";
+const CACHE = "toneforge-v15";
 const SHELL = [
   "./index.html",
-  "./style.css?v=14",
-  "./app.js?v=14",
-  "./vad.js?v=14",
-  "./drill.js?v=14",
-  "./learn.js?v=14",
-  "./write.js?v=14",
-  "./scratchpad.js?v=14",
-  "./recall.js?v=14",
-  "./challenges.js?v=14",
-  "./srs-review.js?v=14",
-  "./progress.js?v=14",
-  "./config.js?v=14",
+  "./style.css?v=15",
+  "./app.js?v=15",
+  "./vad.js?v=15",
+  "./drill.js?v=15",
+  "./learn.js?v=15",
+  "./write.js?v=15",
+  "./vendor/hanzilookup/hanzilookup.min.js",
+  "./vendor/hanzilookup/mmah.json",
+  "./vendor/hanzilookup/orig.json",
+  "./scratchpad.js?v=15",
+  "./recall.js?v=15",
+  "./challenges.js?v=15",
+  "./srs-review.js?v=15",
+  "./progress.js?v=15",
+  "./config.js?v=15",
   "./manifest.json",
 ];
 

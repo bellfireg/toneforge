@@ -596,6 +596,8 @@ def curriculum_outline() -> list[dict]:
                     "goal": l["goal"],
                     "count": len(l["items"]),
                     "capstone": l.get("capstone", False),
+                    "is_boss": l.get("capstone", False),
+                    "requires_no_guide": l.get("capstone", False),
                     "has_recall_prompts": bool(l.get("recall_prompts")),
                     "recall_prompt_count": len(l.get("recall_prompts", [])),
                 }
@@ -616,9 +618,11 @@ def get_lesson(lesson_id: str) -> dict | None:
                     "goal": l["goal"],
                     "unit_id": unit["id"],
                     "unit_title": unit["title"],
+                    "is_boss": l.get("capstone", False),
+                    "requires_no_guide": l.get("capstone", False),
                     "items": [
-                        {"hanzi": hz, "pinyin": py, "gloss": gl, "tone": tn}
-                        for (hz, py, gl, tn) in l["items"]
+                        {"order": idx, "hanzi": hz, "pinyin": py, "gloss": gl, "tone": tn}
+                        for idx, (hz, py, gl, tn) in enumerate(l["items"])
                     ],
                     "recall_prompts": l.get("recall_prompts", []),
                 }
@@ -874,8 +878,18 @@ def lesson_item_scores(lesson_id: str, user_id: str = "default") -> dict:
     passed = [hz for hz in items if scores[hz] >= tone_engine.PASS_SCORE]
     vals = list(scores.values())
     best_avg = round(sum(vals) / len(vals)) if vals else 0
+    ordered_items = [
+        {
+            "order": idx,
+            "hanzi": hz,
+            "score": scores[hz],
+            "green": scores[hz] >= tone_engine.PASS_SCORE,
+        }
+        for idx, hz in enumerate(items)
+    ]
     return {
         "scores": scores,
+        "ordered_items": ordered_items,
         "items_total": len(items),
         "items_passed": len(passed),
         "best_avg": best_avg,

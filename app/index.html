@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>🔊 ToneForge — Mandarin Learning Tutor</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="style.css?v=14" />
+  <link rel="stylesheet" href="style.css?v=15" />
 </head>
 <body>
   <header class="topbar">
@@ -43,6 +43,7 @@
   </section>
 
   <section id="drill" class="drill">
+    <button class="drill-back-btn" id="drillBackBtn" type="button" aria-label="Back to Learn">← Back to Learn</button>
     <div class="drill-card">
       <div class="drill-hanzi" id="drillHanzi">妈</div>
       <div class="drill-pinyin" id="drillPinyin">mā</div>
@@ -59,19 +60,24 @@
 
   <section id="write" class="write">
     <div class="write-card">
-      <div class="write-target" id="writeTarget">你</div>
-      <div class="write-pinyin" id="writePinyin">nǐ</div>
-      <div class="write-en" id="writeEn">you</div>
-      <div class="write-mode-label" id="writeModeLabel">Trace over the outline</div>
-      <div class="write-stage" id="writeStage"></div>
-      <div class="write-modes">
-        <button id="writeAnimate" class="write-btn" type="button">👁️ Watch</button>
-        <button id="writeTrace" class="write-btn active" type="button">✏️ Trace</button>
-        <button id="writeRecall" class="write-btn" type="button">🧠 Recall</button>
-        <button id="writeNext" class="write-btn next" type="button">➡️ Next</button>
+      <div class="write-meta">
+        <div>
+          <div class="write-pinyin" id="writePinyin">nǐ</div>
+          <div class="write-en" id="writeEn">you</div>
+        </div>
+        <div class="write-count" id="writeCharCount">character 1 of 1</div>
+      </div>
+      <div class="write-target" id="writeTarget">target: 你</div>
+      <canvas id="writeCanvas" class="write-canvas" width="320" height="320" aria-label="Blank handwriting scratchpad"></canvas>
+      <div class="write-actions">
+        <button id="writeUndo" class="write-btn" type="button">Undo</button>
+        <button id="writeClear" class="write-btn" type="button">Clear</button>
+        <button id="writeCheck" class="write-btn primary" type="button">Check</button>
+        <button id="writeNext" class="write-btn next" type="button">Next</button>
       </div>
     </div>
     <div id="writeResult" class="write-result" hidden></div>
+    <div id="writeCandidates" class="write-candidates" hidden></div>
   </section>
 
   <!-- Challenge tab panel -->
@@ -124,18 +130,18 @@
   </footer>
 
   <audio id="player" hidden></audio>
-  <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5.0/dist/hanzi-writer.min.js"></script>
-  <script src="config.js?v=14"></script>
-  <script src="app.js?v=14"></script>
-  <script src="vad.js?v=14"></script>
-  <script src="drill.js?v=14"></script>
-  <script src="learn.js?v=14"></script>
-  <script src="write.js?v=14"></script>
-  <script src="scratchpad.js?v=14"></script>
-  <script src="recall.js?v=14"></script>
-  <script src="challenges.js?v=14"></script>
-  <script src="srs-review.js?v=14"></script>
-  <script src="progress.js?v=14"></script>
+  <script src="config.js?v=15"></script>
+  <script src="app.js?v=15"></script>
+  <script src="vad.js?v=15"></script>
+  <script src="drill.js?v=15"></script>
+  <script src="learn.js?v=15"></script>
+  <script src="vendor/hanzilookup/hanzilookup.min.js"></script>
+  <script src="write.js?v=15"></script>
+  <script src="scratchpad.js?v=15"></script>
+  <script src="recall.js?v=15"></script>
+  <script src="challenges.js?v=15"></script>
+  <script src="srs-review.js?v=15"></script>
+  <script src="progress.js?v=15"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});

@@ -1,7 +1,7 @@
 """Mandarin tone-scoring engine.
 
-Compares a learner's pitch (F0) contour against a native reference (TTS) using
-Praat (parselmouth) for pitch extraction and DTW for contour alignment.
+Compares a learner's pitch (F0) contour against canonical Mandarin tone shapes
+using Praat (parselmouth) for pitch extraction and DTW for contour alignment.
 
 This is the portfolio differentiator: a from-scratch Mandarin tone scorer, not a
 paid cloud API. Mandarin is tonal (妈/麻/马/骂 differ only by pitch contour), so
@@ -11,8 +11,8 @@ tones".
 Pipeline:
   raw audio (any format) --ffmpeg--> mono 16k wav
     --parselmouth--> F0 contour (Hz, voiced frames only)
-    --semitone-normalize--> speaker-independent contour
-    --DTW vs reference--> normalized distance -> 0..100 score
+    --log/z-normalize--> speaker-independent contour
+    --DTW vs canonical reference + tone calibration--> 0..100 score
 """
 from __future__ import annotations
 
@@ -72,6 +72,17 @@ def to_semitones(f0: np.ndarray) -> np.ndarray:
     return 12.0 * np.log2(f0 / ref)
 
 
+def z_normalize(contour: np.ndarray) -> np.ndarray:
+    """Center and scale a contour so only its shape remains."""
+    if contour.size == 0:
+        return contour
+    c = contour.astype(float) - float(np.mean(contour))
+    sd = float(np.std(c))
+    if sd < 1e-6:
+        return np.zeros_like(c)
+    return c / sd
+
+
 def smooth(contour: np.ndarray, win: int = 5) -> np.ndarray:
     """Light moving-average smoothing to reduce pitch-tracker jitter."""
     if contour.size < win:
@@ -91,14 +102,20 @@ def resample_to(contour: np.ndarray, n: int = 100) -> np.ndarray:
     return np.interp(x, xp, contour)
 
 
-def prep_contour(wav_path: str) -> np.ndarray:
-    """Full prep: extract F0 -> semitones -> smooth -> resample(100)."""
-    f0 = extract_f0(wav_path)
+def normalize_f0_contour(f0: np.ndarray, n: int = 32) -> np.ndarray:
+    """Drop unvoiced frames, log-scale, smooth, resample, then z-normalize."""
+    f0 = np.asarray(f0, dtype=float)
+    f0 = f0[np.isfinite(f0) & (f0 > 0)]
     if f0.size == 0:
         return f0
-    st = to_semitones(f0)
-    st = smooth(st)
-    return resample_to(st, 100)
+    log_pitch = 12.0 * np.log2(f0)
+    log_pitch = smooth(log_pitch, win=3)
+    return z_normalize(resample_to(log_pitch, n))
+
+
+def prep_contour(wav_path: str) -> np.ndarray:
+    """Full prep: extract F0 -> log pitch -> smooth -> resample(32) -> z-normalize."""
+    return normalize_f0_contour(extract_f0(wav_path), n=32)
 
 
 # ---------------------------------------------------------------------------
@@ -107,50 +124,135 @@ def prep_contour(wav_path: str) -> np.ndarray:
 
 TONE_NAMES = {1: "datar tinggi (—)", 2: "naik (ˊ)", 3: "turun-naik (ˇ)", 4: "jatuh (ˋ)"}
 
+# A learner "passes" a syllable (tone counted as correct) at or above this score.
+# This is the single source of truth for correctness — the UI must use the
+# `pass` flag, not re-derive correctness from detected_tone.
+PASS_SCORE = 70
 
-def shape_features(contour: np.ndarray) -> dict | None:
-    """Extract speaker-independent shape features from a semitone contour.
 
-    Trims ~12% off each edge (syllable onset/offset are noisy), then measures:
-      slope     — linear trend over the syllable
-      end_start — net pitch change (last - first); the most robust rise/fall cue
-      mean      — average level vs the speaker's own median
-      dip       — how far the contour drops below its mean (tone-3 V depth)
-      minpos    — where the lowest point sits (0=start, 1=end)
+def scoring_contours(f0: np.ndarray, n: int = 32) -> tuple[np.ndarray, np.ndarray]:
+    """Return (z-normalized shape, semitone contour) for scoring.
+
+    The normalized contour is used for reference-shape similarity. The semitone
+    contour keeps the real movement size so a flat syllable does not become a
+    fake rise after z-normalization.
     """
+    f0 = np.asarray(f0, dtype=float)
+    f0 = f0[np.isfinite(f0) & (f0 > 0)]
+    if f0.size == 0:
+        return f0, f0
+    semitone = smooth(to_semitones(f0), win=3)
+    semitone = resample_to(semitone, n)
+    return z_normalize(semitone), semitone
+
+
+def reference_contour(tone: int, n: int = 32) -> np.ndarray:
+    """Canonical normalized Mandarin tone shape."""
+    x = np.linspace(0.0, 1.0, n)
+    if tone == 1:
+        y = np.zeros(n)
+    elif tone == 2:
+        y = x
+    elif tone == 3:
+        # Full third tone: an early/mid low valley followed by a gentle rise.
+        y = np.where(x <= 0.55, 0.45 - 1.45 * (x / 0.55),
+                     -1.0 + 0.9 * ((x - 0.55) / 0.45))
+    elif tone == 4:
+        y = 1.0 - x
+    else:
+        raise ValueError("invalid tone")
+    return z_normalize(y)
+
+
+def dtw_distance(a: np.ndarray, b: np.ndarray) -> float:
+    """Small DTW over absolute point distances, normalized by path length."""
+    n, m = a.size, b.size
+    dp = np.full((n + 1, m + 1), np.inf)
+    steps = np.zeros((n + 1, m + 1), dtype=int)
+    dp[0, 0] = 0.0
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            choices = (dp[i - 1, j], dp[i, j - 1], dp[i - 1, j - 1])
+            k = int(np.argmin(choices))
+            if k == 0:
+                pi, pj = i - 1, j
+            elif k == 1:
+                pi, pj = i, j - 1
+            else:
+                pi, pj = i - 1, j - 1
+            dp[i, j] = abs(float(a[i - 1] - b[j - 1])) + dp[pi, pj]
+            steps[i, j] = steps[pi, pj] + 1
+    return float(dp[n, m] / max(1, steps[n, m]))
+
+
+def shape_features(contour: np.ndarray, semitone: np.ndarray | None = None) -> dict | None:
+    """Extract tone-shape features from normalized and semitone contours."""
     n = contour.size
     if n < 6:
         return None
-    lo, hi = int(n * 0.12), int(n * 0.88)
+    lo, hi = int(n * 0.10), int(n * 0.90)
     c = contour[lo:hi]
+    st = semitone[lo:hi] if semitone is not None and semitone.size == n else c
     if c.size < 5:
         return None
     x = np.linspace(0.0, 1.0, c.size)
+    min_i = int(np.argmin(st))
     return {
         "slope": float(np.polyfit(x, c, 1)[0]),
-        "end_start": float(c[-1] - c[0]),
-        "mean": float(c.mean()),
-        "dip": float(c.mean() - c.min()),
-        "minpos": float(np.argmin(c) / c.size),
+        "end_start": float(st[-1] - st[0]),
+        "range": float(st.max() - st.min()),
+        "dip": float(max(st[0], st[-1]) - st[min_i]),
+        "minpos": float(min_i / max(1, st.size - 1)),
     }
+
+
+def reference_similarity(contour: np.ndarray, tone: int) -> float:
+    """Map normalized DTW distance to a lenient 0..100 shape score."""
+    ref = reference_contour(tone, contour.size)
+    dist = dtw_distance(contour, ref)
+    scale = {1: 1.15, 2: 1.05, 3: 1.35, 4: 1.05}[tone]
+    return 100.0 * np.exp(-((dist / scale) ** 2))
+
+
+def calibrated_tone_score(contour: np.ndarray, semitone: np.ndarray, tone: int,
+                          f: dict) -> float:
+    """Blend contour similarity with tone-specific Mandarin pitch cues."""
+    shape = reference_similarity(contour, tone)
+    movement = abs(f["end_start"])
+    if tone == 1:
+        flat = 100.0 * np.exp(-((f["range"] / 2.2) ** 2))
+        return 0.55 * shape + 0.45 * flat
+    if tone == 2:
+        rise = 100.0 / (1.0 + np.exp(-1.35 * (f["end_start"] - 1.0)))
+        not_flat = min(100.0, 100.0 * movement / 2.2)
+        return 0.58 * shape + 0.30 * rise + 0.12 * not_flat
+    if tone == 4:
+        fall = 100.0 / (1.0 + np.exp(-1.35 * (-f["end_start"] - 1.0)))
+        not_flat = min(100.0, 100.0 * movement / 2.2)
+        return 0.58 * shape + 0.30 * fall + 0.12 * not_flat
+    if tone == 3:
+        valley_pos = 100.0 * np.exp(-(((f["minpos"] - 0.55) / 0.32) ** 2))
+        dip = 100.0 / (1.0 + np.exp(-1.6 * (f["dip"] - 0.8)))
+        # Tone 3 often surfaces as a low or half-third contour; make the dip
+        # cue decisive, and let a shallow but correctly placed valley pass.
+        return 0.45 * shape + 0.35 * dip + 0.20 * valley_pos
+    return 0.0
 
 
 def detect_tone(f: dict) -> int:
     """Best-guess which Mandarin tone the learner actually produced.
 
     Primary axis = end_start (net rise/fall), which is robust and
-    speaker-independent. Rising => tone 2, falling => tone 4. For the flat-ish
-    cases we separate tone 1 (flat, higher) from tone 3 (low / slight dip) using
-    level + dip — a deliberately weak signal, since isolated tone-3 collapses to
-    a 'half-third' that is genuinely hard to tell from tone 1.
+    speaker-independent. Rising => tone 2, falling => tone 4. A clear valley
+    in the middle is treated as tone 3 before the directional checks.
     """
     e = f["end_start"]
-    if e > 2.5:
-        return 2
-    if e < -2.5:
-        return 4
-    if f["mean"] < -0.25 or f["dip"] > 1.1:
+    if f["dip"] > 1.0 and 0.25 <= f["minpos"] <= 0.85:
         return 3
+    if e > 1.8:
+        return 2
+    if e < -1.8:
+        return 4
     return 1
 
 
@@ -160,53 +262,58 @@ def score_tone(learner_wav: str, target_tone: int) -> dict:
     The app always knows the target tone (it comes from the curriculum's pinyin),
     so we score the learner's contour against that tone's expected rise/fall
     profile rather than matching a noisy TTS reference. Returns:
-      { score: 0..100, detected_tone, target_tone, features, ok, reason }
+      { score: 0..100, detected_tone, target_tone, features, ok, pass, reason }
+
+    `pass` (score >= PASS_SCORE) is the authoritative "did they get the tone
+    right" verdict — it is derived from the contour-vs-target similarity, NOT
+    from the standalone detect_tone() classifier (which is deliberately weak for
+    the flat/low tones and would otherwise contradict a perfectly good score).
     """
-    contour = prep_contour(learner_wav)
+    if target_tone not in (1, 2, 3, 4):
+        return {"score": 0, "detected_tone": None, "target_tone": target_tone,
+                "ok": False, "pass": False, "reason": "invalid_target_tone"}
+
+    contour, semitone = scoring_contours(extract_f0(learner_wav), n=32)
     if contour.size == 0:
         return {"score": 0, "detected_tone": None, "target_tone": target_tone,
-                "ok": False, "reason": "no_voiced_speech"}
+                "ok": False, "pass": False, "reason": "no_voiced_speech"}
 
-    f = shape_features(contour)
+    f = shape_features(contour, semitone)
     if f is None:
         return {"score": 0, "detected_tone": None, "target_tone": target_tone,
-                "ok": False, "reason": "too_short"}
+                "ok": False, "pass": False, "reason": "too_short"}
 
-    e = f["end_start"]
-    if target_tone == 1:        # flat: net change near zero
-        raw = np.exp(-(e ** 2) / (2 * 2.0 ** 2))
-    elif target_tone == 2:      # rising: e strongly positive
-        raw = 1.0 / (1.0 + np.exp(-(e - 2.0)))
-    elif target_tone == 4:      # falling: e strongly negative
-        raw = 1.0 / (1.0 + np.exp(e + 2.0))
-    elif target_tone == 3:      # low half-third: near-flat / slight, low level
-        raw = np.exp(-((e - 0.5) ** 2) / (2 * 2.0 ** 2))
-    else:
-        return {"score": 0, "detected_tone": None, "target_tone": target_tone,
-                "ok": False, "reason": "invalid_target_tone"}
-
-    score = max(0, min(100, int(round(100.0 * float(raw)))))
+    raw = calibrated_tone_score(contour, semitone, target_tone, f)
+    score = max(0, min(100, int(round(float(raw)))))
+    passed = score >= PASS_SCORE
+    # When the contour clearly matches the target, report the target as the
+    # detected tone so the UI never contradicts a good score with the weak
+    # classifier. Only fall back to detect_tone() when they did NOT pass.
+    detected = target_tone if passed else detect_tone(f)
     return {
         "score": score,
-        "detected_tone": detect_tone(f),
+        "detected_tone": detected,
         "target_tone": target_tone,
         "features": {k: round(v, 2) for k, v in f.items()},
         "ok": True,
+        "pass": passed,
         "reason": "",
     }
 
 
 def tone_feedback(score: int) -> str:
-    """Human, encouraging feedback string keyed to the tone score."""
+    """Human, encouraging feedback string keyed to the tone score (English)."""
+    if score >= 95:
+        return "Perfect tone! 🎉 Native-level."
     if score >= 85:
-        return "Nada kamu hampir sempurna! 👏"
+        return "Almost perfect — really nicely done! 👏"
     if score >= 70:
-        return "Nadanya udah bagus, tinggal dihalusin dikit."
+        return "Good tone, just polish it a little."
     if score >= 50:
-        return "Arah nadanya betul tapi belum pas — dengerin contoh & tiru naik-turunnya."
+        return "Right direction but not quite there — listen to the example and copy the rise/fall."
     if score >= 30:
-        return "Nadanya masih meleset. Fokus ke naik/turun pitch tiap suku kata."
-    return "Coba lagi pelan-pelan, tiru persis nada di contoh."
+        return "Tone is off. Focus on the pitch going up/down on each syllable."
+    return "Try again slowly and mimic the example tone exactly."
 
 
 # ---------------------------------------------------------------------------
